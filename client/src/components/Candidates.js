@@ -2,6 +2,9 @@ import React, { useEffect, useState } from 'react';
 import api from '../api';
 
 export default function Candidates({ token }) {
+  const [candidates, setCandidates] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState(null);
   const [selectedCandidate, setSelectedCandidate] = useState(null);
 
   useEffect(() => {
