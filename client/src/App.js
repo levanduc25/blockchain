@@ -36,11 +36,14 @@ function App() {
   return (
     <div className="App">
       <nav className="App-nav">
-        <button onClick={() => setView('candidates')}>Candidates</button>
-        {!user && <button onClick={() => setView('login')}>Login</button>}
-        {!user && <button onClick={() => setView('register')}>Register</button>}
-        {user && user.role === 'admin' && <button onClick={() => setView('admin')}>Admin</button>}
-        {user && <button onClick={handleLogout}>Logout</button>}
+        <div className="nav-brand">Blockchain Voting</div>
+        <div className="nav-links">
+          <button className={`nav-link ${view === 'candidates' ? 'active' : ''}`} onClick={() => setView('candidates')}>Candidates</button>
+          {!user && <button className="nav-link" onClick={() => setView('login')}>Login</button>}
+          {!user && <button className="nav-link" onClick={() => setView('register')}>Register</button>}
+          {user && user.role === 'admin' && <button className="nav-link" onClick={() => setView('admin')}>Admin Dashboard</button>}
+          {user && <button className="nav-link" onClick={handleLogout}>Logout</button>}
+        </div>
       </nav>
 
       <main className="App-main">

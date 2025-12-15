@@ -16,4 +16,7 @@ router.post('/declare-result/:electionId', adminController.declareResult);
 router.get('/election/:electionId', adminController.getElectionDetails);
 router.post('/reset-election/:electionId', adminController.resetElection);
 
+router.get('/users', adminController.getAllUsers);
+router.put('/users/:id/role', adminController.updateUserRole);
+
 module.exports = router;

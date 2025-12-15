@@ -22,28 +22,52 @@ export default function Register({ onRegister }) {
   };
 
   return (
-    <div>
-      <h2>Register</h2>
-      <form onSubmit={submit}>
-        <div>
-          <label>Username</label>
-          <input value={username} onChange={e => setUsername(e.target.value)} />
-        </div>
-        <div>
-          <label>Email</label>
-          <input value={email} onChange={e => setEmail(e.target.value)} type="email" />
-        </div>
-        <div>
-          <label>Password</label>
-          <input value={password} onChange={e => setPassword(e.target.value)} type="password" />
-        </div>
-        <div>
-          <label>Wallet address (optional)</label>
-          <input value={walletAddress} onChange={e => setWalletAddress(e.target.value)} />
-        </div>
-        <button type="submit">Register</button>
-        {error && <div style={{ color: 'red' }}>{error}</div>}
-      </form>
+    <div className="auth-container">
+      <div className="card">
+        <h2 style={{ marginTop: 0 }}>Register</h2>
+        <form onSubmit={submit}>
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Username</label>
+            <input
+              className="input-field"
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+              required
+            />
+          </div>
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Email</label>
+            <input
+              className="input-field"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              type="email"
+              required
+            />
+          </div>
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Password</label>
+            <input
+              className="input-field"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              type="password"
+              required
+            />
+          </div>
+          <div style={{ marginBottom: '1.5rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Wallet address (optional)</label>
+            <input
+              className="input-field"
+              value={walletAddress}
+              onChange={e => setWalletAddress(e.target.value)}
+              placeholder="0x..."
+            />
+          </div>
+          <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Register</button>
+          {error && <div style={{ color: 'red', marginTop: '1rem', fontSize: '0.875rem' }}>{error}</div>}
+        </form>
+      </div>
     </div>
   );
 }

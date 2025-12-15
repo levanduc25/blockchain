@@ -38,5 +38,22 @@ export default {
   getAdminDashboard: (token) => request('/admin/dashboard', {
     method: 'GET',
     headers: { Authorization: `Bearer ${token}` }
+  }),
+
+  addCandidate: (token, body) => request('/candidate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body)
+  }),
+
+  getAllUsers: (token) => request('/admin/users', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` }
+  }),
+
+  updateUserRole: (token, userId, role) => request(`/admin/users/${userId}/role`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ role })
   })
 };

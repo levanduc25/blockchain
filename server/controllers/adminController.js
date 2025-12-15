@@ -16,7 +16,7 @@ exports.getDashboard = async (req, res) => {
     const pendingVerifications = await AadharInfo.countDocuments({ isVerified: false });
     const totalCandidates = await Candidate.countDocuments();
     const totalVotes = await Vote.countDocuments();
-    
+
     const activeElection = await ElectionState.findOne({ isActive: true });
 
     res.json({
@@ -112,7 +112,7 @@ exports.verifyAadhar = async (req, res) => {
     // Update associated Voter
     await Voter.updateOne(
       { aadharInfo: aadharInfo._id },
-      { 
+      {
         isVerified: true,
         verifiedBy: req.user.id,
         verifiedAt: new Date()
@@ -155,7 +155,7 @@ exports.rejectAadhar = async (req, res) => {
       await Voter.deleteOne({ user: user._id });
       await user.deleteOne();
     }
-    
+
     await aadharInfo.deleteOne();
 
     res.json({
@@ -303,7 +303,7 @@ exports.changeElectionState = async (req, res) => {
 
     // Update state
     election.currentState = newState;
-    
+
     // Add to state change logs
     election.stateChangeLogs.push({
       previousState,
@@ -455,8 +455,8 @@ exports.resetElection = async (req, res) => {
     await Vote.deleteMany({ election: election._id });
 
     // Reset all voter statuses
-    await Voter.updateMany({}, { 
-      hasVoted: false, 
+    await Voter.updateMany({}, {
+      hasVoted: false,
       voteAt: null,
       voteCandidateId: null,
       voteTxHash: null
@@ -484,6 +484,65 @@ exports.resetElection = async (req, res) => {
 
   } catch (error) {
     console.error('Reset Election Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get all users
+// @route   GET /api/admin/users
+// @access  Private (Admin only)
+exports.getAllUsers = async (req, res) => {
+  try {
+    const users = await User.find().select('-password').sort({ createdAt: -1 });
+    res.json({
+      success: true,
+      count: users.length,
+      users
+    });
+  } catch (error) {
+    console.error('Get All Users Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Update user role
+// @route   PUT /api/admin/users/:id/role
+// @access  Private (Admin only)
+exports.updateUserRole = async (req, res) => {
+  try {
+    const { role } = req.body;
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    user.role = role;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: `User role updated to ${role}`,
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    console.error('Update User Role Error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error',
