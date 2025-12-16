@@ -152,26 +152,60 @@ function UserList({ token }) {
   );
 }
 
+import { useWeb3 } from '../contexts/Web3Context';
+
 function AddCandidateForm({ token, onSuccess }) {
-  const [name, setName] = useState('');
-  const [party, setParty] = useState('');
-  const [manifesto, setManifesto] = useState('');
+  const [formData, setFormData] = useState({
+    name: '', party: '', age: '', qualification: '', manifesto: '', photo: '', biography: ''
+  });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
+
+  const { contract, account } = useWeb3();
+
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setMessage(null);
+
+    // 1. Check Web3 connection
+    if (!contract || !account) {
+      setLoading(false);
+      return setMessage({ type: 'error', text: 'Please connect Metamask first!' });
+    }
+
     try {
-      await api.addCandidate(token, { name, party, manifesto });
+      setMessage({ type: 'info', text: 'Please confirm transaction in Metamask...' });
+
+      // 2. Sign transaction on Blockchain
+      const receipt = await contract.methods.addCandidate(formData.name, formData.party).send({ from: account });
+
+      const txHash = receipt.transactionHash;
+      const candidateId = receipt.events.CandidateAdded.returnValues.candidateId;
+
+      setMessage({ type: 'info', text: 'Transaction confirmed! Saving details...' });
+
+      // 3. Send metadata to Backend
+      await api.addCandidate(token, {
+        ...formData,
+        txHash,
+        candidateId: Number(candidateId)
+      });
+
       setMessage({ type: 'success', text: 'Candidate added successfully!' });
-      setName('');
-      setParty('');
-      setManifesto('');
+      setFormData({ name: '', party: '', age: '', qualification: '', manifesto: '', photo: '', biography: '' });
       if (onSuccess) onSuccess();
     } catch (err) {
-      setMessage({ type: 'error', text: err.message || 'Failed to add candidate' });
+      console.error(err);
+      if (err.code === 4001) {
+        setMessage({ type: 'error', text: 'Transaction rejected by user' });
+      } else {
+        setMessage({ type: 'error', text: err.message || 'Failed to add candidate' });
+      }
     } finally {
       setLoading(false);
     }
@@ -184,31 +218,53 @@ function AddCandidateForm({ token, onSuccess }) {
           padding: '0.75rem',
           borderRadius: '0.5rem',
           marginBottom: '1rem',
-          background: message.type === 'error' ? '#fef2f2' : '#f0fdf4',
-          color: message.type === 'error' ? '#991b1b' : '#166534'
+          background: message.type === 'error' ? '#fef2f2' : (message.type === 'info' ? '#eff6ff' : '#f0fdf4'),
+          color: message.type === 'error' ? '#991b1b' : (message.type === 'info' ? '#1e40af' : '#166534'),
+          border: '1px solid currentColor'
         }}>
           {message.text}
         </div>
       )}
-      <div style={{ marginBottom: '1rem' }}>
-        <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Name</label>
-        <input className="input-field" value={name} onChange={e => setName(e.target.value)} required />
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Name</label>
+          <input className="input-field" name="name" value={formData.name} onChange={handleChange} required />
+        </div>
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Party</label>
+          <input className="input-field" name="party" value={formData.party} onChange={handleChange} required />
+        </div>
       </div>
-      <div style={{ marginBottom: '1rem' }}>
-        <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Party</label>
-        <input className="input-field" value={party} onChange={e => setParty(e.target.value)} required />
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Age</label>
+          <input className="input-field" name="age" type="number" value={formData.age} onChange={handleChange} />
+        </div>
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Qualification</label>
+          <input className="input-field" name="qualification" value={formData.qualification} onChange={handleChange} />
+        </div>
       </div>
+
+      <div style={{ marginBottom: '1rem' }}>
+        <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Photo URL</label>
+        <input className="input-field" name="photo" value={formData.photo} onChange={handleChange} placeholder="https://example.com/photo.jpg" />
+      </div>
+
+      <div style={{ marginBottom: '1rem' }}>
+        <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Biography</label>
+        <textarea className="input-field" name="biography" value={formData.biography} onChange={handleChange} rows={2} />
+      </div>
+
       <div style={{ marginBottom: '1.5rem' }}>
         <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Manifesto</label>
-        <textarea
-          className="input-field"
-          value={manifesto}
-          onChange={e => setManifesto(e.target.value)}
-          rows={3}
-        />
+        <textarea className="input-field" name="manifesto" value={formData.manifesto} onChange={handleChange} rows={3} />
       </div>
+
       <button type="submit" className="btn btn-primary" disabled={loading} style={{ width: '100%' }}>
-        {loading ? 'Adding...' : 'Add Candidate'}
+        {loading ? 'Processing...' : 'Add Candidate (Sign with Wallet)'}
       </button>
     </form>
   );

@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api';
+import { useWeb3 } from '../contexts/Web3Context';
 
 export default function Candidates({ token }) {
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
-  const [selectedCandidate, setSelectedCandidate] = useState(null);
+  const { contract, account, connectWallet } = useWeb3();
 
   useEffect(() => {
     api.getCandidates().then(res => {
@@ -16,24 +17,49 @@ export default function Candidates({ token }) {
     }).finally(() => setLoading(false));
   }, []);
 
-  const handleVoteClick = (candidate) => {
+  const handleVote = async (candidate) => {
     if (!token) return setMessage('You must be logged in to vote');
-    setSelectedCandidate(candidate);
-  };
+    if (!account) {
+      // Try to connect if not connected
+      try {
+        await connectWallet();
+      } catch (e) {
+        return setMessage('Please connect your Metamask wallet to vote');
+      }
+    }
 
-  const handleVoteSubmit = async (txData) => {
+    if (!contract) return setMessage('Blockchain contract not loaded');
+
+    setMessage('Waiting for transaction signature...');
+
     try {
+      // 1. Send transaction to Blockchain
+      const receipt = await contract.methods.vote(candidate.candidateId).send({ from: account });
+
+      setMessage('Transaction confirmed! Recording vote...');
+
+      // 2. Record vote in Backend
       const res = await api.castVote(token, {
-        candidateId: selectedCandidate._id,
-        transactionHash: txData.txHash,
-        blockNumber: Number(txData.blockNumber),
-        gasUsed: Number(txData.gasUsed)
+        candidateId: candidate._id,
+        transactionHash: receipt.transactionHash,
+        blockNumber: Number(receipt.blockNumber),
+        gasUsed: Number(receipt.gasUsed)
       });
-      setMessage(res.message || 'Vote submitted');
+      setMessage(res.message || 'Vote submitted successfully!');
+
+      // Update candidate list to show new vote count
+      setCandidates(prev => prev.map(c =>
+        c._id === candidate._id ? { ...c, voteCount: (c.voteCount || 0) + 1 } : c
+      ));
+
     } catch (err) {
-      setMessage(err.message || 'Vote failed');
-    } finally {
-      setSelectedCandidate(null);
+      console.error(err);
+      // Handle Metamask user rejection or other errors
+      if (err.code === 4001) {
+        setMessage('Transaction rejected by user');
+      } else {
+        setMessage(err.message || 'Vote failed on blockchain');
+      }
     }
   };
 
@@ -48,11 +74,12 @@ export default function Candidates({ token }) {
 
       {message && (
         <div style={{
-          background: message.includes('failed') ? '#fef2f2' : '#f0fdf4',
-          color: message.includes('failed') ? '#991b1b' : '#166534',
+          background: message.includes('failed') || message.includes('rejected') ? '#fef2f2' : '#f0fdf4',
+          color: message.includes('failed') || message.includes('rejected') ? '#991b1b' : '#166534',
           padding: '1rem',
           borderRadius: '0.5rem',
-          marginBottom: '1.5rem'
+          marginBottom: '1.5rem',
+          border: '1px solid currentColor'
         }}>
           {message}
         </div>
@@ -81,7 +108,7 @@ export default function Candidates({ token }) {
               <button
                 className="btn btn-primary"
                 style={{ width: '100%' }}
-                onClick={() => handleVoteClick(c)}
+                onClick={() => handleVote(c)}
               >
                 Vote for {c.name}
               </button>
@@ -89,100 +116,6 @@ export default function Candidates({ token }) {
           </div>
         ))}
         {candidates.length === 0 && <div style={{ fontStyle: 'italic', color: 'var(--text-muted)' }}>No candidates found.</div>}
-      </div>
-
-      {selectedCandidate && (
-        <VoteModal
-          candidate={selectedCandidate}
-          onClose={() => setSelectedCandidate(null)}
-          onSubmit={handleVoteSubmit}
-        />
-      )}
-    </div>
-  );
-}
-
-function VoteModal({ candidate, onClose, onSubmit }) {
-  const [txHash, setTxHash] = useState('0x123abcFakeHashForDemo');
-  const [blockNumber, setBlockNumber] = useState('100');
-  const [gasUsed, setGasUsed] = useState('21000');
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    onSubmit({ txHash, blockNumber, gasUsed });
-  };
-
-  return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(0,0,0,0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000
-    }}>
-      <div className="card" style={{ width: '100%', maxWidth: '400px', animation: 'fadeIn 0.2s' }}>
-        <h3 style={{ marginTop: 0 }}>Confirm Vote</h3>
-        <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-          You are voting for <strong>{candidate.name}</strong>. Please enter the blockchain transaction details below (Demo Mode).
-        </p>
-
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Transaction Hash</label>
-            <input
-              className="input-field"
-              value={txHash}
-              onChange={e => setTxHash(e.target.value)}
-              required
-              placeholder="0x..."
-            />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
-            <div>
-              <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Block Number</label>
-              <input
-                className="input-field"
-                type="number"
-                value={blockNumber}
-                onChange={e => setBlockNumber(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Gas Used</label>
-              <input
-                className="input-field"
-                type="number"
-                value={gasUsed}
-                onChange={e => setGasUsed(e.target.value)}
-                required
-              />
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: '1rem' }}>
-            <button
-              type="button"
-              className="btn"
-              onClick={onClose}
-              style={{ flex: 1, background: 'var(--bg-body)' }}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              style={{ flex: 1 }}
-            >
-              Confirm Vote
-            </button>
-          </div>
-        </form>
       </div>
     </div>
   );

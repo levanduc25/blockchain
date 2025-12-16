@@ -1,7 +1,7 @@
 const Candidate = require('../models/Candidate');
 const ElectionState = require('../models/ElectionState');
-const { 
-  addCandidateToBlockchain, 
+const {
+  addCandidateToBlockchain,
   verifyCandidateOnBlockchain,
   getAllCandidatesFromBlockchain,
   getElectionResults
@@ -63,19 +63,21 @@ exports.getCandidateById = async (req, res) => {
   }
 };
 
-// @desc    Create new candidate
+// @desc    Create new candidate (Off-chain metadata + Link to Blockchain)
 // @route   POST /api/candidates
 // @access  Private (Admin only)
 exports.createCandidate = async (req, res) => {
   try {
-    const { 
-      name, 
-      party, 
-      age, 
-      qualification, 
+    const {
+      name,
+      party,
+      age,
+      qualification,
       manifesto,
       photo,
-      biography
+      biography,
+      txHash,        // Provided by client
+      candidateId    // Provided by client
     } = req.body;
 
     // Validation
@@ -83,6 +85,13 @@ exports.createCandidate = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Please provide candidate name and party'
+      });
+    }
+
+    if (!txHash || !candidateId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Blockchain transaction hash and Candidate ID are required'
       });
     }
 
@@ -98,7 +107,7 @@ exports.createCandidate = async (req, res) => {
     // Get active election (if any) to associate candidate
     const activeElection = await ElectionState.findOne({ isActive: true });
 
-    // Create candidate in MongoDB first
+    // Create candidate in MongoDB
     const candidate = await Candidate.create({
       name,
       party,
@@ -109,30 +118,11 @@ exports.createCandidate = async (req, res) => {
       biography,
       voteCount: 0,
       isVerified: false,
-      addedToBlockchain: false,
+      addedToBlockchain: true, // Since client already added it
+      blockchainTxHash: txHash,
+      candidateId: candidateId,
       election: activeElection ? activeElection._id : undefined
     });
-
-    // Add to blockchain
-    try {
-      const blockchainResult = await addCandidateToBlockchain(name, party);
-      
-      // Update candidate with blockchain info
-      candidate.addedToBlockchain = true;
-      candidate.blockchainTxHash = blockchainResult.txHash;
-      
-      // Get candidate count to determine candidateId
-      const candidateCount = await Candidate.countDocuments({ addedToBlockchain: true });
-      candidate.candidateId = candidateCount;
-      
-      await candidate.save();
-
-      console.log('✅ Candidate added to blockchain:', blockchainResult.txHash);
-    } catch (blockchainError) {
-      console.error('⚠️ Blockchain error:', blockchainError.message);
-      // Candidate saved in DB but not on blockchain
-      // Can be added manually later by admin
-    }
 
     // Update active election's totalCandidates (if present)
     if (activeElection) {
@@ -142,7 +132,7 @@ exports.createCandidate = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Candidate created successfully',
+      message: 'Candidate created & linked successfully',
       data: candidate
     });
 
@@ -161,11 +151,11 @@ exports.createCandidate = async (req, res) => {
 // @access  Private (Admin only)
 exports.updateCandidate = async (req, res) => {
   try {
-    const { 
-      name, 
-      party, 
-      age, 
-      qualification, 
+    const {
+      name,
+      party,
+      age,
+      qualification,
       manifesto,
       photo,
       biography
@@ -247,7 +237,7 @@ exports.verifyCandidate = async (req, res) => {
     // Verify on blockchain
     try {
       const blockchainResult = await verifyCandidateOnBlockchain(candidate.candidateId);
-      
+
       // Update in database
       candidate.isVerified = true;
       candidate.verifiedBy = req.user.id;
@@ -351,10 +341,10 @@ exports.getResults = async (req, res) => {
     // Enrich with MongoDB data
     const results = await Promise.all(
       blockchainResults.map(async (bcCandidate) => {
-        const dbCandidate = await Candidate.findOne({ 
-          candidateId: Number(bcCandidate.id) 
+        const dbCandidate = await Candidate.findOne({
+          candidateId: Number(bcCandidate.id)
         });
-        
+
         return {
           id: bcCandidate.id,
           name: bcCandidate.name,
@@ -368,11 +358,11 @@ exports.getResults = async (req, res) => {
 
     // Calculate percentages
     const totalVotes = results.reduce((sum, c) => sum + c.votes, 0);
-    
+
     const enrichedResults = results.map(candidate => ({
       ...candidate,
-      percentage: totalVotes > 0 
-        ? ((candidate.votes / totalVotes) * 100).toFixed(2) 
+      percentage: totalVotes > 0
+        ? ((candidate.votes / totalVotes) * 100).toFixed(2)
         : 0
     })).sort((a, b) => b.votes - a.votes);
 
