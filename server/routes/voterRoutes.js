@@ -9,6 +9,7 @@ router.get('/verify-vote/:txHash', voterController.verifyVote);
 // Protected voter endpoints
 router.use(protect);
 router.get('/profile', voterController.getProfile);
+router.post('/register', voterController.registerVoter);
 router.get('/can-vote', voterController.canVote);
 router.post('/vote', voterController.castVote);
 router.get('/voting-history', voterController.getVotingHistory);

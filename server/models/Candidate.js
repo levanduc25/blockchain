@@ -26,6 +26,10 @@ const candidateSchema = new mongoose.Schema({
     type: String,
     trim: true,
   },
+  address: {
+    type: String,
+    trim: true,
+  },
   voteCount: {
     type: Number,
     default: 0,

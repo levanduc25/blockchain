@@ -156,10 +156,11 @@ contract VotingSystem {
     }
 
     // Bỏ phiếu
-    function vote(uint256 _candidateId) public inState(ElectionState.Voting) {
+    function vote(uint256 _candidateId) public payable inState(ElectionState.Voting) {
         require(voters[msg.sender].isRegistered, "You are not registered");
         require(voters[msg.sender].isVerified, "You are not verified");
         require(!voters[msg.sender].hasVoted, "You have already voted");
+        require(msg.value > 0, "Must send ETH to vote");
         require(
             _candidateId > 0 && _candidateId <= candidateCount,
             "Invalid candidate ID"

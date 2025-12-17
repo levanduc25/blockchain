@@ -38,6 +38,124 @@ exports.getProfile = async (req, res) => {
   }
 };
 
+// @desc    Register voter on blockchain
+// @route   POST /api/voter/register
+// @access  Private (Voter only)
+exports.registerVoter = async (req, res) => {
+  try {
+    const { cccd, accountAddress, fullName, gender, address, phoneNumber } = req.body;
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Update wallet address if provided
+    if (accountAddress) {
+      user.walletAddress = accountAddress;
+      await user.save();
+    }
+
+    if (!user.walletAddress) {
+      return res.status(400).json({
+        success: false,
+        message: 'Wallet address is required'
+      });
+    }
+
+    let voter = await Voter.findOne({ user: req.user.id });
+    if (!voter) {
+      // Create AadharInfo
+      const aadharInfo = await AadharInfo.create({
+        aadharNumber: cccd,
+        fullName: fullName || user.username,
+        gender: gender || 'Other',
+        address: address || 'Unknown',
+        phoneNumber: phoneNumber || '0000000000',
+        email: user.email,
+      });
+
+      // Create Voter
+      voter = await Voter.create({
+        user: req.user.id,
+        walletAddress: user.walletAddress,
+        aadharInfo: aadharInfo._id,
+        isVerified: true, // Auto-verify on registration
+      });
+    }
+
+    if (voter.isRegistered) {
+      return res.status(400).json({
+        success: false,
+        message: 'Already registered on blockchain'
+      });
+    }
+
+    // Register on blockchain
+    const blockchainService = require('../services/blockchainService');
+    let result;
+    try {
+      result = await blockchainService.registerVoterOnBlockchain(user.walletAddress);
+    } catch (blockchainError) {
+      if (blockchainError.message && blockchainError.message.includes('Voter already registered')) {
+        // Voter is already registered on blockchain, update DB
+        voter.isRegistered = true;
+        voter.registeredAt = voter.registeredAt || new Date();
+        voter.isVerified = true; // Ensure verified
+        await voter.save();
+        return res.json({
+          success: true,
+          message: 'Người bầu đã đăng ký trên blockchain',
+        });
+      } else if (blockchainError.message && blockchainError.message.includes('sender account not recognized')) {
+        return res.status(400).json({
+          success: false,
+          message: 'Địa chỉ ví không hợp lệ. Vui lòng sử dụng tài khoản hợp lệ từ blockchain cục bộ của bạn (Ganache).'
+        });
+      } else {
+        throw blockchainError;
+      }
+    }
+
+    // Update voter status
+    voter.isRegistered = true;
+    voter.registeredAt = new Date();
+    voter.registrationTxHash = result.txHash;
+    voter.isVerified = true; // Auto-verify on successful registration
+    await voter.save();
+
+    // Verify voter on blockchain
+    let verifyResult;
+    try {
+      verifyResult = await blockchainService.verifyVoterOnBlockchain(user.walletAddress);
+      console.log('Voter verified on blockchain:', verifyResult.txHash);
+    } catch (verifyError) {
+      console.error('Verify voter error:', verifyError);
+      // Continue, as registration succeeded
+    }
+
+    // Update user as verified
+    user.isVerified = true;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Đăng ký trên blockchain thành công',
+      txHash: result.txHash
+    });
+
+  } catch (error) {
+    console.error('Register Voter Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
 // @desc    Check if voter can vote
 // @route   GET /api/voter/can-vote
 // @access  Private (Voter only)

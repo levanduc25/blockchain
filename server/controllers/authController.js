@@ -6,7 +6,7 @@ const generateToken = require('../utils/jwtGenerator');
 // @access  Public
 exports.register = async (req, res) => {
   try {
-    const { username, email, password, walletAddress } = req.body;
+    const { username, email, password, walletAddress, role } = req.body;
 
     if (!username || !email || !password) {
       return res.status(400).json({ success: false, message: 'Please provide username, email and password' });
@@ -15,7 +15,7 @@ exports.register = async (req, res) => {
     const existing = await User.findOne({ email });
     if (existing) return res.status(400).json({ success: false, message: 'Email already in use' });
 
-    const user = await User.create({ username, email, password, walletAddress });
+    const user = await User.create({ username, email, password, walletAddress, role: role || 'voter' });
 
     const token = generateToken(user._id);
 

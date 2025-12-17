@@ -65,7 +65,7 @@ exports.getCandidateById = async (req, res) => {
 
 // @desc    Create new candidate (Off-chain metadata + Link to Blockchain)
 // @route   POST /api/candidates
-// @access  Private (Admin only)
+// @access  Private (Admin and Candidate roles)
 exports.createCandidate = async (req, res) => {
   try {
     const {
@@ -76,8 +76,9 @@ exports.createCandidate = async (req, res) => {
       manifesto,
       photo,
       biography,
-      txHash,        // Provided by client
-      candidateId    // Provided by client
+      address,
+      txHash,        // Optional - provided by admin only
+      candidateId    // Optional - provided by admin only
     } = req.body;
 
     // Validation
@@ -88,12 +89,41 @@ exports.createCandidate = async (req, res) => {
       });
     }
 
-    if (!txHash || !candidateId) {
-      return res.status(400).json({
+    // ===== PHÂN QUYỀN THEO ROLE =====
+    const userRole = req.user.role;
+    const isAdmin = userRole === 'admin';
+    const isCandidate = userRole === 'candidate';
+
+    // Chỉ cho phép admin và candidate
+    if (!isAdmin && !isCandidate) {
+      return res.status(403).json({
         success: false,
-        message: 'Blockchain transaction hash and Candidate ID are required'
+        message: 'Only candidates can register or admin can create candidates'
       });
     }
+
+    // Nếu là candidate, không được phép gửi txHash và candidateId
+    if (isCandidate && (txHash || candidateId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only admin can link candidates to blockchain directly'
+      });
+    }
+
+    // Kiểm tra nếu candidate đã đăng ký rồi
+    if (isCandidate) {
+      const existingCandidateByUser = await Candidate.findOne({ 
+        registeredBy: req.user.id 
+      });
+      
+      if (existingCandidateByUser) {
+        return res.status(400).json({
+          success: false,
+          message: 'You have already registered as a candidate'
+        });
+      }
+    }
+    // ===== HẾT PHẦN PHÂN QUYỀN =====
 
     // Check if candidate already exists
     const existingCandidate = await Candidate.findOne({ name, party });
@@ -108,7 +138,7 @@ exports.createCandidate = async (req, res) => {
     const activeElection = await ElectionState.findOne({ isActive: true });
 
     // Create candidate in MongoDB
-    const candidate = await Candidate.create({
+    const candidateData = {
       name,
       party,
       age,
@@ -116,13 +146,27 @@ exports.createCandidate = async (req, res) => {
       manifesto,
       photo,
       biography,
+      address,
       voteCount: 0,
-      isVerified: false,
-      addedToBlockchain: true, // Since client already added it
-      blockchainTxHash: txHash,
-      candidateId: candidateId,
-      election: activeElection ? activeElection._id : undefined
-    });
+      isVerified: isAdmin, // Admin tự verify ngay, candidate phải chờ admin duyệt
+      addedToBlockchain: !!(txHash && candidateId), // Only true if both txHash and candidateId provided
+      election: activeElection ? activeElection._id : undefined,
+      registeredBy: req.user.id // Track ai đăng ký
+    };
+
+    // Add blockchain fields if provided (admin flow only)
+    if (txHash && candidateId && isAdmin) {
+      candidateData.blockchainTxHash = txHash;
+      candidateData.candidateId = candidateId;
+    }
+
+    // Nếu admin verify ngay, set verifiedBy
+    if (isAdmin) {
+      candidateData.verifiedBy = req.user.id;
+      candidateData.verifiedAt = new Date();
+    }
+
+    const candidate = await Candidate.create(candidateData);
 
     // Update active election's totalCandidates (if present)
     if (activeElection) {
@@ -132,7 +176,11 @@ exports.createCandidate = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Candidate created & linked successfully',
+      message: isAdmin ?
+        (txHash && candidateId ? 
+          'Candidate created & linked to blockchain successfully' : 
+          'Candidate created and verified successfully') :
+        'Candidate registered successfully. Waiting for admin verification.',
       data: candidate
     });
 
@@ -226,45 +274,60 @@ exports.verifyCandidate = async (req, res) => {
       });
     }
 
-    // Must be on blockchain before verification
-    if (!candidate.addedToBlockchain || !candidate.candidateId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Candidate must be added to blockchain first'
-      });
+    // Check if user has wallet address (required for blockchain operations)
+    if (!candidate.address) {
+      console.warn(`Candidate ${candidate.name} has no wallet address. Verification may fail on blockchain.`);
     }
 
-    // Verify on blockchain
-    try {
-      const blockchainResult = await verifyCandidateOnBlockchain(candidate.candidateId);
-
-      // Update in database
-      candidate.isVerified = true;
-      candidate.verifiedBy = req.user.id;
-      candidate.verifiedAt = new Date();
-      await candidate.save();
-
-      console.log('✅ Candidate verified on blockchain:', blockchainResult.txHash);
-
-      res.json({
-        success: true,
-        message: 'Candidate verified successfully',
-        data: candidate,
-        blockchain: {
-          txHash: blockchainResult.txHash,
-          blockNumber: blockchainResult.blockNumber,
-          gasUsed: blockchainResult.gasUsed
+    // If candidate is already on blockchain, verify there too
+    if (candidate.addedToBlockchain && candidate.candidateId) {
+      if (candidate.address) {
+        try {
+          const blockchainResult = await verifyCandidateOnBlockchain(candidate.candidateId);
+          console.log('✅ Candidate verified on blockchain:', blockchainResult.txHash);
+        } catch (blockchainError) {
+          console.error('Blockchain verification error:', blockchainError);
+          console.warn('⚠️ Blockchain verification failed, but database verification continues');
         }
-      });
-
-    } catch (blockchainError) {
-      console.error('Blockchain verification error:', blockchainError);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to verify candidate on blockchain',
-        error: blockchainError.message
-      });
+      } else {
+        console.warn('⚠️ Candidate has no address, skipping blockchain verification');
+      }
+    } else {
+      // If not on blockchain yet, add to blockchain now (only if has address)
+      if (candidate.address) {
+        try {
+          console.log('Adding candidate to blockchain during verification...');
+          const blockchainResult = await addCandidateToBlockchain(candidate.name, candidate.party);
+          
+          candidate.addedToBlockchain = true;
+          candidate.blockchainTxHash = blockchainResult.txHash;
+          candidate.candidateId = blockchainResult.candidateId;
+          
+          console.log('✅ Candidate added to blockchain:', blockchainResult.txHash);
+        } catch (blockchainError) {
+          console.error('Failed to add candidate to blockchain:', blockchainError);
+          return res.status(500).json({
+            success: false,
+            message: 'Failed to add candidate to blockchain',
+            error: blockchainError.message
+          });
+        }
+      } else {
+        console.warn('⚠️ Candidate has no address, cannot add to blockchain. Verification only in database.');
+      }
     }
+
+    // Update in database
+    candidate.isVerified = true;
+    candidate.verifiedBy = req.user.id;
+    candidate.verifiedAt = new Date();
+    await candidate.save();
+
+    res.json({
+      success: true,
+      message: 'Candidate verified successfully',
+      data: candidate
+    });
 
   } catch (error) {
     console.error('Verify Candidate Error:', error);

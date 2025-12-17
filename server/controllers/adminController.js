@@ -2,6 +2,7 @@ const User = require('../models/User');
 const AadharInfo = require('../models/AadharInfo');
 const Voter = require('../models/Voter');
 const Candidate = require('../models/Candidate');
+const Event = require('../models/Event');
 const ElectionState = require('../models/ElectionState');
 const Vote = require('../models/Vote');
 
@@ -127,6 +128,119 @@ exports.verifyAadhar = async (req, res) => {
 
   } catch (error) {
     console.error('Verify Aadhar Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Verify voter on blockchain
+// @route   PUT /api/admin/verify-voter/:userId
+// @access  Private (Admin only)
+exports.verifyVoter = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId);
+    if (!user || !user.walletAddress) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found or no wallet address'
+      });
+    }
+
+    const voter = await Voter.findOne({ user: user._id });
+    if (!voter) {
+      return res.status(404).json({
+        success: false,
+        message: 'Voter not found'
+      });
+    }
+
+    if (!voter.isRegistered) {
+      return res.status(400).json({
+        success: false,
+        message: 'Voter not registered on blockchain'
+      });
+    }
+
+    if (voter.isVerified) {
+      return res.status(400).json({
+        success: false,
+        message: 'Voter already verified'
+      });
+    }
+
+    // Verify on blockchain
+    const blockchainService = require('../services/blockchainService');
+    const result = await blockchainService.verifyVoterOnBlockchain(user.walletAddress);
+
+    // Update voter status
+    voter.isVerified = true;
+    voter.verifiedBy = req.user.id;
+    voter.verifiedAt = new Date();
+    await voter.save();
+
+    // Update AadharInfo
+    const AadharInfo = require('../models/AadharInfo');
+    if (voter.aadharInfo) {
+      await AadharInfo.findByIdAndUpdate(voter.aadharInfo, { isVerified: true });
+    }
+
+    // Also update user isVerified
+    user.isVerified = true;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Voter verified on blockchain successfully',
+      txHash: result.txHash
+    });
+
+  } catch (error) {
+    console.error('Verify Voter Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Verify event
+// @route   PUT /api/admin/verify-event/:eventId
+// @access  Private (Admin only)
+exports.verifyEvent = async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.eventId);
+
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    if (event.isVerified) {
+      return res.status(400).json({
+        success: false,
+        message: 'Event already verified'
+      });
+    }
+
+    // Update event status
+    event.isVerified = true;
+    event.verifiedBy = req.user.id;
+    event.verifiedAt = new Date();
+    await event.save();
+
+    res.json({
+      success: true,
+      message: 'Event verified successfully'
+    });
+
+  } catch (error) {
+    console.error('Verify Event Error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error',
@@ -274,7 +388,7 @@ exports.createElection = async (req, res) => {
 // @access  Private (Admin only)
 exports.changeElectionState = async (req, res) => {
   try {
-    const { newState, txHash } = req.body;
+    const { newState } = req.body;
 
     if (!newState || !['Registration', 'Voting', 'Ended'].includes(newState)) {
       return res.status(400).json({
@@ -283,12 +397,16 @@ exports.changeElectionState = async (req, res) => {
       });
     }
 
-    const election = await ElectionState.findById(req.params.electionId);
+    // Change state on blockchain first
+    const blockchainService = require('../services/blockchainService');
+    const result = await blockchainService.changeElectionStateOnBlockchain(newState);
+
+    const election = await ElectionState.findOne({ isActive: true });
 
     if (!election) {
       return res.status(404).json({
         success: false,
-        message: 'Election not found'
+        message: 'No active election found'
       });
     }
 
@@ -310,7 +428,7 @@ exports.changeElectionState = async (req, res) => {
       newState,
       changeBy: req.user.id,
       changeAt: new Date(),
-      txHash
+      txHash: result.txHash
     });
 
     // If ending election, mark as inactive
@@ -323,7 +441,8 @@ exports.changeElectionState = async (req, res) => {
     res.json({
       success: true,
       message: `Election state changed to ${newState}`,
-      election
+      election,
+      txHash: result.txHash
     });
 
   } catch (error) {
@@ -505,6 +624,49 @@ exports.getAllUsers = async (req, res) => {
     });
   } catch (error) {
     console.error('Get All Users Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get all users
+// @route   GET /api/admin/users
+// @access  Private (Admin only)
+exports.getAllUsers = async (req, res) => {
+  try {
+    const users = await User.find().select('-password').populate('aadharInfo').populate({
+      path: 'voter',
+      model: 'Voter'
+    });
+    res.json({
+      success: true,
+      users
+    });
+  } catch (error) {
+    console.error('Get All Users Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get all voters
+// @route   GET /api/admin/voters
+// @access  Private (Admin only)
+exports.getAllVoters = async (req, res) => {
+  try {
+    const voters = await Voter.find().populate('user').populate('aadharInfo').populate('election');
+    res.json({
+      success: true,
+      voters
+    });
+  } catch (error) {
+    console.error('Get All Voters Error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error',

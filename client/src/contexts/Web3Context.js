@@ -68,6 +68,21 @@ export const Web3Provider = ({ children }) => {
                 const web3Instance = new Web3(window.ethereum);
                 const accounts = await web3Instance.eth.getAccounts();
                 setAccount(accounts[0]);
+
+                // Load contract after connecting
+                const networkId = await web3Instance.eth.net.getId();
+                const deployedNetwork = VotingSystemContract.networks[networkId];
+
+                if (deployedNetwork) {
+                    const contractInstance = new web3Instance.eth.Contract(
+                        VotingSystemContract.abi,
+                        deployedNetwork.address,
+                    );
+                    setContract(contractInstance);
+                } else {
+                    setContract(null);
+                    console.error('Contract not deployed to detected network.');
+                }
             } catch (err) {
                 console.error("User denied account access", err);
                 throw err;

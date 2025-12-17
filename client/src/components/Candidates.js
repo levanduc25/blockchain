@@ -6,6 +6,8 @@ export default function Candidates({ token }) {
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
+  const [electionState, setElectionState] = useState('Registration');
   const { contract, account, connectWallet } = useWeb3();
 
   useEffect(() => {
@@ -15,12 +17,59 @@ export default function Candidates({ token }) {
       console.error(err);
       setMessage('Failed to load candidates');
     }).finally(() => setLoading(false));
-  }, []);
+
+    if (token) {
+      api.getVoterProfile(token).then(res => {
+        if (res && res.voter) setUserProfile(res.voter);
+      }).catch(console.error);
+
+      api.getElectionState(token).then(res => {
+        if (res && res.currentState) setElectionState(res.currentState);
+      }).catch(console.error);
+    }
+  }, [token]);
+
+  const handleRegisterVoter = async () => {
+    if (!token) return setMessage('You must be logged in');
+    if (!account) {
+      try {
+        await connectWallet();
+      } catch (e) {
+        return setMessage('Please connect your Metamask wallet');
+      }
+    }
+
+    if (!contract) return setMessage('Blockchain contract not loaded');
+
+    setMessage('Registering on blockchain...');
+
+    try {
+      // Call registerVoter on blockchain
+      await contract.methods.registerVoter().send({ from: account });
+
+      setMessage('Transaction confirmed! Saving registration...');
+
+      // Save to backend
+      const res = await api.registerVoter(token);
+      setMessage(res.message || 'Registered successfully!');
+
+      // Refresh profile
+      const profileRes = await api.getVoterProfile(token);
+      if (profileRes && profileRes.voter) setUserProfile(profileRes.voter);
+
+    } catch (err) {
+      console.error(err);
+      if (err.code === 4001) {
+        setMessage('Transaction rejected by user');
+      } else {
+        setMessage(err.message || 'Registration failed');
+      }
+    }
+  };
 
   const handleVote = async (candidate) => {
     if (!token) return setMessage('You must be logged in to vote');
     if (!account) {
-      // Try to connect if not connected
       try {
         await connectWallet();
       } catch (e) {
@@ -29,6 +78,11 @@ export default function Candidates({ token }) {
     }
 
     if (!contract) return setMessage('Blockchain contract not loaded');
+
+    if (!userProfile) return setMessage('User profile not loaded');
+    if (!userProfile.isRegistered) return setMessage('You must register as voter first');
+    if (!userProfile.isVerified) return setMessage('Your account is not verified yet. Please wait for admin approval.');
+    if (electionState !== 'Voting') return setMessage(`Election is in ${electionState} phase. Voting is not active.`);
 
     setMessage('Waiting for transaction signature...');
 
@@ -69,7 +123,19 @@ export default function Candidates({ token }) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <h2 style={{ margin: 0 }}>Candidates</h2>
-        <span style={{ color: 'var(--text-muted)' }}>{candidates.length} candidates available</span>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <span style={{ color: 'var(--text-muted)' }}>Election Phase: <strong>{electionState}</strong></span>
+          {token && userProfile && !userProfile.isRegistered && (
+            <button
+              className="btn"
+              style={{ background: '#f59e0b', color: 'white', border: 'none' }}
+              onClick={handleRegisterVoter}
+            >
+              Register as Voter
+            </button>
+          )}
+          <span style={{ color: 'var(--text-muted)' }}>{candidates.length} candidates available</span>
+        </div>
       </div>
 
       {message && (
@@ -109,8 +175,9 @@ export default function Candidates({ token }) {
                 className="btn btn-primary"
                 style={{ width: '100%' }}
                 onClick={() => handleVote(c)}
+                disabled={electionState !== 'Voting'}
               >
-                Vote for {c.name}
+                {electionState === 'Voting' ? `Vote for ${c.name}` : `Voting ${electionState === 'Registration' ? 'Not Started' : 'Ended'}`}
               </button>
             </div>
           </div>

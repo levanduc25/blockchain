@@ -28,10 +28,12 @@ const userSchema = new mongoose.Schema({
     enum: ["voter", "admin", "candidate"],
     default: "voter",
   },
+  isVerified: {
+    type: Boolean,
+    default: false,
+  },
   walletAddress: {
     type: String,
-    unique: true,
-    sparse: true,
   },
   aadharInfo: {
     type: mongoose.Schema.Types.ObjectId,

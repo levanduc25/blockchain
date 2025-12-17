@@ -14,9 +14,9 @@ const voteSchema = new mongoose.Schema({
     type: Number,
     required: [true, "Please add a candidate ID"],
   },
-  election: {
+  event: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "ElectionState",
+    ref: "Event",
     required: true,
   },
   voterWalletAddress: {

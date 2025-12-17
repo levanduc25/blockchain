@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api';
 
 export default function Register({ onRegister }) {
@@ -6,15 +7,18 @@ export default function Register({ onRegister }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [walletAddress, setWalletAddress] = useState('');
+  const [role, setRole] = useState('voter');
   const [error, setError] = useState(null);
+  const navigate = useNavigate();
 
   const submit = async (e) => {
     e.preventDefault();
     setError(null);
     try {
-      const res = await api.register({ username, email, password, walletAddress });
+      const res = await api.register({ username, email, password, walletAddress, role });
       if (res && res.token) {
         onRegister(res.user, res.token);
+        navigate(res.user.role === 'candidate' ? '/candidate-registration' : '/voter-registration');
       }
     } catch (err) {
       setError(err.message || 'Registration failed');
@@ -56,13 +60,16 @@ export default function Register({ onRegister }) {
             />
           </div>
           <div style={{ marginBottom: '1.5rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Wallet address (optional)</label>
-            <input
+            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Role</label>
+            <select
               className="input-field"
-              value={walletAddress}
-              onChange={e => setWalletAddress(e.target.value)}
-              placeholder="0x..."
-            />
+              value={role}
+              onChange={e => setRole(e.target.value)}
+              required
+            >
+              <option value="voter">Voter</option>
+              <option value="candidate">Candidate</option>
+            </select>
           </div>
           <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Register</button>
           {error && <div style={{ color: 'red', marginTop: '1rem', fontSize: '0.875rem' }}>{error}</div>}

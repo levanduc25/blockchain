@@ -12,7 +12,7 @@ module.exports = {
     // Ganache CLI network (nếu bạn dùng ganache-cli)
     ganache_cli: {
       host: "127.0.0.1",
-      port: 8545,
+      port: 7545,
       network_id: "*"
     }
   },

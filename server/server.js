@@ -21,6 +21,7 @@ app.use('/api/voter', require('./routes/voterRoutes'));
 app.use('/api/candidate', require('./routes/candidateRoutes'));
 app.use('/api/vote', require('./routes/voteRoutes'));
 app.use('/api/election', require('./routes/electionRoutes'));
+app.use('/api/events', require('./routes/eventRoutes'));
 
 app.use(errorHandler);
 

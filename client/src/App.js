@@ -1,25 +1,31 @@
 import React, { useEffect, useState } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import './App.css';
 import Login from './components/Login';
 import Register from './components/Register';
-import Candidates from './components/Candidates';
+import Dashboard from './components/Dashboard';
 import Admin from './components/Admin';
+import Information from './components/Information';
+import VoterRegistration from './components/VoterRegistration';
+import CandidateRegistration from './components/CandidateRegistration';
+import Events from './components/Events';
 import api from './api';
 
-import { Web3Provider, useWeb3 } from './contexts/Web3Context';
+import { Web3Provider } from './contexts/Web3Context';
 
 function App() {
   return (
     <Web3Provider>
-      <AppContent />
+      <Router>
+        <AppContent />
+      </Router>
     </Web3Provider>
   );
 }
 
 function AppContent() {
-  const [view, setView] = useState('candidates');
   const [user, setUser] = useState(null);
-  const { account, connectWallet } = useWeb3();
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -30,56 +36,73 @@ function AppContent() {
         localStorage.removeItem('token');
       });
     }
+    setLoading(false);
   }, []);
 
-  const handleLogin = (user, token) => {
+  const handleLogin = (userData, token) => {
     localStorage.setItem('token', token);
-    setUser(user);
-    setView('candidates');
+    setUser(userData);
   };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
     setUser(null);
-    setView('candidates');
   };
 
+  if (loading) return <div>Loading...</div>;
+
   return (
-    <div className="App">
-      <nav className="App-nav">
-        <div className="nav-brand">Blockchain Voting</div>
-        <div className="nav-links">
-          <button className={`nav-link ${view === 'candidates' ? 'active' : ''}`} onClick={() => setView('candidates')}>Candidates</button>
-          {!user && <button className="nav-link" onClick={() => setView('login')}>Login</button>}
-          {!user && <button className="nav-link" onClick={() => setView('register')}>Register</button>}
-          {user && user.role === 'admin' && <button className="nav-link" onClick={() => setView('admin')}>Admin Dashboard</button>}
-          {user && <button className="nav-link" onClick={handleLogout}>Logout</button>}
-
-          <div style={{ marginLeft: '1rem', display: 'flex', alignItems: 'center' }}>
-            {account ? (
-              <span className="party-badge" style={{ background: '#dbeafe', color: '#1e40af' }}>
-                {account.substring(0, 6)}...{account.substring(account.length - 4)}
-              </span>
-            ) : (
-              <button
-                className="btn"
-                style={{ padding: '0.25rem 0.75rem', fontSize: '0.875rem', background: '#f59e0b', color: 'white', border: 'none' }}
-                onClick={connectWallet}
-              >
-                Connect Wallet
-              </button>
-            )}
-          </div>
-        </div>
-      </nav>
-
-      <main className="App-main">
-        {view === 'login' && <Login onLogin={handleLogin} />}
-        {view === 'register' && <Register onRegister={handleLogin} />}
-        {view === 'candidates' && <Candidates token={localStorage.getItem('token')} />}
-        {view === 'admin' && <Admin token={localStorage.getItem('token')} />}
-      </main>
-    </div>
+    <Routes>
+      <Route
+        path="/login"
+        element={
+          user ? <Navigate to={user.role === 'candidate' ? "/candidate-registration" : "/voter-registration"} /> : <Login onLogin={handleLogin} />
+        }
+      />
+      <Route
+        path="/register"
+        element={
+          user ? <Navigate to={user.role === 'candidate' ? "/candidate-registration" : "/voter-registration"} /> : <Register onRegister={handleLogin} />
+        }
+      />
+      <Route
+        path="/dashboard"
+        element={
+          user ? <Dashboard onLogout={handleLogout} /> : <Navigate to="/login" />
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          user && user.role === 'admin' ? <Admin token={localStorage.getItem('token')} /> : <Navigate to="/dashboard" />
+        }
+      />
+      <Route
+        path="/information"
+        element={
+          user ? <Information user={user} onLogout={handleLogout} /> : <Navigate to="/login" />
+        }
+      />
+      <Route
+        path="/voter-registration"
+        element={
+          user ? <VoterRegistration user={user} onLogout={handleLogout} /> : <Navigate to="/login" />
+        }
+      />
+      <Route
+        path="/candidate-registration"
+        element={
+          user ? <CandidateRegistration user={user} onLogout={handleLogout} /> : <Navigate to="/login" />
+        }
+      />
+      <Route
+        path="/events"
+        element={
+          user ? <Events user={user} onLogout={handleLogout} /> : <Navigate to="/login" />
+        }
+      />
+      <Route path="/" element={<Navigate to={user ? (user.role === 'candidate' ? "/candidate-registration" : "/voter-registration") : "/login"} />} />
+    </Routes>
   );
 }
 

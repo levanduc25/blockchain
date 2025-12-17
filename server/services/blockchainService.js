@@ -122,6 +122,28 @@ exports.getAllCandidatesFromBlockchain = async () => {
 };
 
 // ===================================================================
+exports.verifyCandidateOnBlockchain = async (candidateId) => {
+  await initContract();
+
+  try {
+    const gasPrice = await web3.eth.getGasPrice();
+    const gasEstimate = await contract.methods.verifyCandidate(candidateId).estimateGas({ from: account.address });
+
+    const tx = await contract.methods.verifyCandidate(candidateId).send({
+      from: account.address,
+      gas: gasEstimate,
+      gasPrice: gasPrice
+    });
+
+    console.log("Candidate verified on blockchain:", tx.transactionHash);
+    return true;
+  } catch (error) {
+    console.error("verifyCandidate error:", error);
+    throw error;
+  }
+};
+
+// ===================================================================
 exports.getElectionResults = async () => {
   await initContract();
 
@@ -143,6 +165,163 @@ exports.getElectionResults = async () => {
     return results;
   } catch (error) {
     console.error("getElectionResults error:", error);
+    throw error;
+  }
+};
+
+// ===================================================================
+
+// ===================================================================
+// REGISTER VOTER
+// ===================================================================
+exports.registerVoterOnBlockchain = async (voterAddress) => {
+  await initContract();
+
+  try {
+    const tx = contract.methods.registerVoter();
+    const gas = await tx.estimateGas({ from: voterAddress });
+
+    const receipt = await tx.send({
+      from: voterAddress,
+      gas,
+    });
+
+    return {
+      success: true,
+      txHash: receipt.transactionHash,
+      blockNumber: receipt.blockNumber,
+      gasUsed: receipt.gasUsed,
+    };
+  } catch (error) {
+    console.error("registerVoter error:", error);
+    throw error;
+  }
+};
+
+// ===================================================================
+// VERIFY VOTER
+// ===================================================================
+exports.verifyVoterOnBlockchain = async (voterAddress) => {
+  await initContract();
+
+  try {
+    const tx = contract.methods.verifyVoter(voterAddress);
+    const gas = await tx.estimateGas({ from: account.address });
+
+    const receipt = await tx.send({
+      from: account.address,
+      gas,
+    });
+
+    return {
+      success: true,
+      txHash: receipt.transactionHash,
+      blockNumber: receipt.blockNumber,
+      gasUsed: receipt.gasUsed,
+    };
+  } catch (error) {
+    console.error("verifyVoter error:", error);
+    throw error;
+  }
+};
+
+// ===================================================================
+// VOTE
+// ===================================================================
+exports.voteOnBlockchain = async (candidateId, voterAddress) => {
+  await initContract();
+
+  try {
+    const tx = contract.methods.vote(candidateId);
+    const gas = await tx.estimateGas({ from: voterAddress });
+
+    const receipt = await tx.send({
+      from: voterAddress,
+      gas,
+    });
+
+    return {
+      success: true,
+      txHash: receipt.transactionHash,
+      blockNumber: receipt.blockNumber,
+      gasUsed: receipt.gasUsed,
+    };
+  } catch (error) {
+    console.error("vote error:", error);
+    throw error;
+  }
+};
+
+// ===================================================================
+// CHANGE ELECTION STATE
+// ===================================================================
+exports.changeElectionStateOnBlockchain = async (newState) => {
+  await initContract();
+
+  const stateMap = {
+    'Registration': 0,
+    'Voting': 1,
+    'Ended': 2
+  };
+
+  const stateValue = stateMap[newState];
+  if (stateValue === undefined) {
+    throw new Error('Invalid election state');
+  }
+
+  try {
+    const tx = contract.methods.changeElectionState(stateValue);
+    const gas = await tx.estimateGas({ from: account.address });
+
+    const receipt = await tx.send({
+      from: account.address,
+      gas,
+    });
+
+    return {
+      success: true,
+      txHash: receipt.transactionHash,
+      blockNumber: receipt.blockNumber,
+      gasUsed: receipt.gasUsed,
+    };
+  } catch (error) {
+    console.error("changeElectionState error:", error);
+    throw error;
+  }
+};
+
+// ===================================================================
+// GET ELECTION STATE
+// ===================================================================
+exports.getElectionStateFromBlockchain = async () => {
+  await initContract();
+
+  try {
+    const stateValue = await contract.methods.electionState().call();
+    const stateNames = ['Registration', 'Voting', 'Ended'];
+    return stateNames[stateValue] || 'Unknown';
+  } catch (error) {
+    console.error("getElectionState error:", error);
+    throw error;
+  }
+};
+
+// ===================================================================
+// GET VOTER INFO
+// ===================================================================
+exports.getVoterInfoFromBlockchain = async (voterAddress) => {
+  await initContract();
+
+  try {
+    const voter = await contract.methods.getVoter(voterAddress).call();
+    return {
+      isRegistered: voter.isRegistered || voter[0],
+      isVerified: voter.isVerified || voter[1],
+      hasVoted: voter.hasVoted || voter[2],
+      votedCandidateId: Number(voter.votedCandidateId || voter[3])
+    };
+  } catch (error) {
+    console.error("getVoterInfo error:", error);
     throw error;
   }
 };

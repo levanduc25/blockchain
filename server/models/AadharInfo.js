@@ -5,7 +5,7 @@ const aadharInfoSchema = new mongoose.Schema({
   type: String,
   required: true,
   unique: true,
-  match: [/^\d{12}$/, "Please add a valid 12-digit Aadhar number"],
+  match: [/^\d{10,12}$/, "Please add a valid 10-12 digit number"],
 },
 
   fullName: {
