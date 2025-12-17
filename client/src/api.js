@@ -34,6 +34,7 @@ export default {
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({ candidateId })
   }),
+
   updateCandidate: (token, id, body) => request(`/candidate/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -84,6 +85,7 @@ export default {
     method: 'PUT',
     headers: { Authorization: `Bearer ${token}` }
   }),
+
   getAdminDashboard: (token) => request('/admin/dashboard', {
     method: 'GET',
     headers: { Authorization: `Bearer ${token}` }
@@ -136,5 +138,12 @@ export default {
   getAllVoters: (token) => request('/admin/voters', {
     method: 'GET',
     headers: { Authorization: `Bearer ${token}` }
+  }),
+
+  // ✅ THÊM HÀM CAST VOTE
+  castVote: (token, body) => request('/voter/vote', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body)
   })
 };

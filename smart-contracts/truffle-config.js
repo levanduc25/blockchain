@@ -30,6 +30,11 @@ module.exports = {
     }
   },
 
+  // Hooks to run after compilation
+  hooks: {
+    'postCompile': 'node ./scripts/updateContract.js'
+  },
+
   // Truffle DB is currently disabled by default
   db: {
     enabled: false

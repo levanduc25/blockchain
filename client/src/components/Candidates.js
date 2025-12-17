@@ -8,7 +8,7 @@ export default function Candidates({ token }) {
   const [message, setMessage] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [electionState, setElectionState] = useState('Registration');
-  const { contract, account, connectWallet } = useWeb3();
+  const { contract, account, web3, connectWallet } = useWeb3();
 
   useEffect(() => {
     api.getCandidates().then(res => {
@@ -84,11 +84,38 @@ export default function Candidates({ token }) {
     if (!userProfile.isVerified) return setMessage('Your account is not verified yet. Please wait for admin approval.');
     if (electionState !== 'Voting') return setMessage(`Election is in ${electionState} phase. Voting is not active.`);
 
+    // Validate candidateId
+    if (candidate.candidateId == null || typeof candidate.candidateId !== 'number' || candidate.candidateId <= 0) {
+      return setMessage('Invalid candidate (missing or invalid blockchain ID)');
+    }
+
     setMessage('Waiting for transaction signature...');
 
     try {
-      // 1. Send transaction to Blockchain
-      const receipt = await contract.methods.vote(candidate.candidateId).send({ from: account });
+      // Debug logging
+      console.log('Voting details:', {
+        candidateId: candidate.candidateId,
+        type: typeof candidate.candidateId,
+        account,
+        candidateName: candidate.name
+      });
+
+      // Simulate the transaction to catch revert reasons
+      try {
+        await contract.methods.vote(candidate.candidateId).call({ 
+          from: account,
+          value: web3.utils.toWei('0.001', 'ether')
+        });
+      } catch (simErr) {
+        console.error('Simulation failed:', simErr);
+        throw new Error(`Transaction would fail: ${simErr.message || 'Internal JSON-RPC error'}`);
+      }
+
+      // 1. Send transaction to Blockchain with required ETH
+      const receipt = await contract.methods.vote(candidate.candidateId).send({ 
+        from: account,
+        value: web3.utils.toWei('0.001', 'ether') // Required for payable function
+      });
 
       setMessage('Transaction confirmed! Recording vote...');
 

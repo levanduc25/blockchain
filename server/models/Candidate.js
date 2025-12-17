@@ -1,4 +1,4 @@
-const mongoose  = require("mongoose");
+const mongoose = require("mongoose");
 
 const candidateSchema = new mongoose.Schema({
   name: {
@@ -13,7 +13,7 @@ const candidateSchema = new mongoose.Schema({
   },
   election: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'ElectionState',
+    ref: "ElectionState",
   },
   age: {
     type: Number,
@@ -21,6 +21,11 @@ const candidateSchema = new mongoose.Schema({
   qualification: {
     type: String,
     trim: true,
+  },
+  candidateId: {
+    type: Number,
+    unique: true,
+    sparse: true,
   },
   manifesto: {
     type: String,
@@ -34,16 +39,9 @@ const candidateSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
-
-  candidateId: {
-    type: Number,
-    unique: true,
-    sparse: true
-  },
-
   addedToBlockchain: {
     type: Boolean,
-    default: false
+    default: false,
   },
 
   // Optional fields

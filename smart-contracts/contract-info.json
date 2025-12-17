@@ -1,7 +1,8 @@
 {
-  "contractAddress": "0x389E4359249854929FDA73d3f68F5bc142aD66E8",
-  "adminAddress": "0x6ea2e39C0571d4BE87De5c899cD1AD7F9E42c620",
+  "contractAddress": "0xA46adB507F69Ac091eBDD0dA267f36C09521931E",
+  "adminAddress": "0x0ccE9359C18f8d6683698c4F334DF4C1227e26Ed",
   "network": "development",
-  "deployedAt": "2025-12-17T07:47:29.062Z",
-  "networkId": 5777
+  "networkId": "5777",
+  "ganacheUrl": "http://localhost:7545",
+  "deployedAt": "2025-12-17T10:14:51.518Z"
 }

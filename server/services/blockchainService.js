@@ -28,7 +28,7 @@ let contractAddress = null;
 const initContract = async () => {
   if (!contractAddress) {
     const networkId = await web3.eth.net.getId();
-    const networkInfo = VotingSystemJSON.networks[networkId];
+    const networkInfo = VotingSystemJSON.networks[networkId.toString()];
 
     if (!networkInfo) {
       throw new Error(`Contract chưa deploy trên network ID ${networkId}`);
@@ -58,10 +58,15 @@ exports.addCandidateToBlockchain = async (name, party) => {
       gas,
     });
 
+    // Get the candidate ID from the event or candidateCount
+    const candidateCount = await contract.methods.candidateCount().call();
+    const candidateId = Number(candidateCount);
+
     return {
       success: true,
       txHash: receipt.transactionHash,
       blockNumber: receipt.blockNumber,
+      candidateId: candidateId,
     };
   } catch (error) {
     console.error("addCandidate error:", error);
@@ -291,17 +296,37 @@ exports.changeElectionStateOnBlockchain = async (newState) => {
 };
 
 // ===================================================================
-// GET ELECTION STATE
+// GET CANDIDATE COUNT
 // ===================================================================
-exports.getElectionStateFromBlockchain = async () => {
+exports.getCandidateCountFromBlockchain = async () => {
   await initContract();
 
   try {
-    const stateValue = await contract.methods.electionState().call();
-    const stateNames = ['Registration', 'Voting', 'Ended'];
-    return stateNames[stateValue] || 'Unknown';
+    const count = await contract.methods.candidateCount().call();
+    return Number(count);
   } catch (error) {
-    console.error("getElectionState error:", error);
+    console.error("getCandidateCount error:", error);
+    throw error;
+  }
+};
+
+// ===================================================================
+// GET CANDIDATE BY ID
+// ===================================================================
+exports.getCandidateFromBlockchain = async (candidateId) => {
+  await initContract();
+
+  try {
+    const c = await contract.methods.candidates(candidateId).call();
+    return {
+      id: candidateId,
+      name: c.name || c[0],
+      party: c.party || c[1],
+      voteCount: Number(c.voteCount || c[2]),
+      isVerified: c.isVerified || c[3],
+    };
+  } catch (error) {
+    console.error("getCandidate error:", error);
     throw error;
   }
 };

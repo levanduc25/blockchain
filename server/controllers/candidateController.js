@@ -4,7 +4,9 @@ const {
   addCandidateToBlockchain,
   verifyCandidateOnBlockchain,
   getAllCandidatesFromBlockchain,
-  getElectionResults
+  getElectionResults,
+  getCandidateCountFromBlockchain,
+  getCandidateFromBlockchain
 } = require('../services/blockchainService');
 
 // @desc    Get all candidates
@@ -16,6 +18,11 @@ exports.getAllCandidates = async (req, res) => {
       .select('-__v')
       .populate('verifiedBy', 'username')
       .sort({ voteCount: -1 });
+
+    console.log('Returning candidates:', candidates.length);
+    candidates.forEach(c => {
+      console.log(`- ${c.name}: candidateId=${c.candidateId}, isVerified=${c.isVerified}`);
+    });
 
     res.json({
       success: true,
@@ -274,66 +281,97 @@ exports.verifyCandidate = async (req, res) => {
       });
     }
 
-    // Check if user has wallet address (required for blockchain operations)
-    if (!candidate.address) {
-      console.warn(`Candidate ${candidate.name} has no wallet address. Verification may fail on blockchain.`);
-    }
+    console.log('=== VERIFYING CANDIDATE ===');
+    console.log('Candidate:', candidate.name);
+    console.log('Party:', candidate.party);
 
-    // If candidate is already on blockchain, verify there too
-    if (candidate.addedToBlockchain && candidate.candidateId) {
-      if (candidate.address) {
-        try {
-          const blockchainResult = await verifyCandidateOnBlockchain(candidate.candidateId);
-          console.log('✅ Candidate verified on blockchain:', blockchainResult.txHash);
-        } catch (blockchainError) {
-          console.error('Blockchain verification error:', blockchainError);
-          console.warn('⚠️ Blockchain verification failed, but database verification continues');
+    // Step 1: Thêm candidate vào blockchain
+    try {
+      console.log('Adding to blockchain...');
+
+      const blockchainResult = await addCandidateToBlockchain(candidate.name, candidate.party);
+
+      console.log('✅ Blockchain transaction successful!');
+      console.log('Transaction hash:', blockchainResult.txHash);
+
+      // Step 2: Lấy candidateId từ blockchain
+      const candidateCount = await getCandidateCountFromBlockchain();
+      const blockchainCandidateId = Number(candidateCount);
+
+      console.log('✅ Blockchain Candidate ID:', blockchainCandidateId);
+
+      // Step 3: Update candidate trong database
+      candidate.candidateId = blockchainCandidateId; // ✅ LƯU CANDIDATE ID
+      candidate.isVerified = true;
+      candidate.addedToBlockchain = true;
+      candidate.blockchainTxHash = blockchainResult.txHash;
+      candidate.verifiedBy = req.user.id;
+      candidate.verifiedAt = new Date();
+
+      await candidate.save();
+
+      // Step 4: Verify candidate trên blockchain
+      console.log('Verifying on blockchain...');
+      await verifyCandidateOnBlockchain(blockchainCandidateId);
+      console.log('✅ Candidate verified on blockchain!');
+
+      console.log('✅ Candidate verified successfully!');
+      console.log('MongoDB _id:', candidate._id);
+      console.log('Blockchain candidateId:', candidate.candidateId);
+
+      res.json({
+        success: true,
+        message: 'Candidate verified and added to blockchain',
+        data: {
+          _id: candidate._id,
+          name: candidate.name,
+          party: candidate.party,
+          candidateId: candidate.candidateId,
+          blockchainTxHash: candidate.blockchainTxHash,
+          isVerified: true
         }
-      } else {
-        console.warn('⚠️ Candidate has no address, skipping blockchain verification');
-      }
-    } else {
-      // If not on blockchain yet, add to blockchain now (only if has address)
-      if (candidate.address) {
-        try {
-          console.log('Adding candidate to blockchain during verification...');
-          const blockchainResult = await addCandidateToBlockchain(candidate.name, candidate.party);
-          
-          candidate.addedToBlockchain = true;
-          candidate.blockchainTxHash = blockchainResult.txHash;
-          candidate.candidateId = blockchainResult.candidateId;
-          
-          console.log('✅ Candidate added to blockchain:', blockchainResult.txHash);
-        } catch (blockchainError) {
-          console.error('Failed to add candidate to blockchain:', blockchainError);
-          return res.status(500).json({
-            success: false,
-            message: 'Failed to add candidate to blockchain',
-            error: blockchainError.message
-          });
+      });
+
+    } catch (blockchainError) {
+      console.error('❌ Blockchain error:', blockchainError);
+
+      // Nếu candidate đã tồn tại trên blockchain, lấy ID từ blockchain
+      if (blockchainError.message && blockchainError.message.includes('already registered')) {
+        // Tìm candidate ID từ blockchain bằng cách duyệt qua tất cả candidates
+        const candidateCount = await getCandidateCountFromBlockchain();
+
+        for (let i = 1; i <= candidateCount; i++) {
+          const blockchainCandidate = await getCandidateFromBlockchain(i);
+          if (blockchainCandidate.name === candidate.name &&
+              blockchainCandidate.party === candidate.party) {
+            candidate.candidateId = i;
+            candidate.isVerified = true;
+            candidate.addedToBlockchain = true;
+            candidate.verifiedBy = req.user.id;
+            candidate.verifiedAt = new Date();
+            await candidate.save();
+
+            return res.json({
+              success: true,
+              message: 'Candidate already on blockchain, ID retrieved',
+              data: candidate
+            });
+          }
         }
-      } else {
-        console.warn('⚠️ Candidate has no address, cannot add to blockchain. Verification only in database.');
       }
+
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to add candidate to blockchain',
+        error: blockchainError.message
+      });
     }
-
-    // Update in database
-    candidate.isVerified = true;
-    candidate.verifiedBy = req.user.id;
-    candidate.verifiedAt = new Date();
-    await candidate.save();
-
-    res.json({
-      success: true,
-      message: 'Candidate verified successfully',
-      data: candidate
-    });
 
   } catch (error) {
-    console.error('Verify Candidate Error:', error);
+    console.error('❌ Verification error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
+      message: 'Candidate verification failed',
       error: error.message
     });
   }

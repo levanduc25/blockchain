@@ -1,6 +1,6 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import Web3 from 'web3';
-import VotingSystemContract from '../contracts/VotingSystem.json';
+import VotingSystemContract from '../contracts/VotingSystem.json';  
 
 const Web3Context = createContext();
 
@@ -37,7 +37,8 @@ export const Web3Provider = ({ children }) => {
 
                     // Generate contract instance
                     const networkId = await web3Instance.eth.net.getId();
-                    const deployedNetwork = VotingSystemContract.networks[networkId];
+                    console.log('Detected network ID:', networkId);
+                    const deployedNetwork = VotingSystemContract.networks[networkId.toString()];
 
                     if (deployedNetwork) {
                         const contractInstance = new web3Instance.eth.Contract(
@@ -46,8 +47,8 @@ export const Web3Provider = ({ children }) => {
                         );
                         setContract(contractInstance);
                     } else {
-                        console.error('Contract not deployed to detected network.');
-                        // Don't error blocking the UI, just maybe warn log
+                        setError('Contract not deployed on the current network. Please switch to the correct network (e.g., Ganache on port 7545).');
+                        setContract(null);
                     }
 
                 } catch (err) {
@@ -71,7 +72,8 @@ export const Web3Provider = ({ children }) => {
 
                 // Load contract after connecting
                 const networkId = await web3Instance.eth.net.getId();
-                const deployedNetwork = VotingSystemContract.networks[networkId];
+                console.log('Detected network ID:', networkId);
+                const deployedNetwork = VotingSystemContract.networks[networkId.toString()];
 
                 if (deployedNetwork) {
                     const contractInstance = new web3Instance.eth.Contract(
@@ -81,7 +83,7 @@ export const Web3Provider = ({ children }) => {
                     setContract(contractInstance);
                 } else {
                     setContract(null);
-                    console.error('Contract not deployed to detected network.');
+                    setError('Contract not deployed on the current network. Please switch to the correct network (e.g., Ganache on port 7545).');
                 }
             } catch (err) {
                 console.error("User denied account access", err);

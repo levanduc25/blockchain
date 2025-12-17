@@ -56,21 +56,53 @@ export default function Events({ user, onLogout }) {
         return;
       }
 
+      // Find the selected candidate object
+      const candidate = candidates.find(c => c._id === selectedCandidate);
+      if (!candidate) {
+        alert('Selected candidate not found');
+        return;
+      }
+
+      console.log('Voting data:');
+      console.log('- Contract address:', contract.options.address);
+      console.log('- Account:', account);
+      console.log('- Candidate ID:', candidate.candidateId, 'Type:', typeof candidate.candidateId);
+      console.log('- Candidate name:', candidate.name);
+      console.log('- Sending value: 0.01 ETH');
+
       // Send vote transaction with ETH
       const voteAmount = web3.utils.toWei('0.01', 'ether'); // 0.01 ETH
-      await contract.methods.vote(selectedCandidate.candidateId).send({
+      console.log('Sending transaction...');
+
+      // First, try call to get potential errors
+      try {
+        await contract.methods.vote(Number(candidate.candidateId)).call({
+          from: account,
+          value: voteAmount
+        });
+        console.log('Call successful, proceeding with send...');
+      } catch (callError) {
+        console.error('Call failed with error:', callError.message);
+        throw new Error(`Transaction would fail: ${callError.message}`);
+      }
+
+      const receipt = await contract.methods.vote(Number(candidate.candidateId)).send({
         from: account,
         value: voteAmount
       });
+      console.log('Transaction successful:', receipt.transactionHash);
 
       // Then save to DB
       const token = localStorage.getItem('token');
-      await api.voteForEvent(token, votingEvent._id, selectedCandidate._id);
+      await api.voteForEvent(token, votingEvent._id, selectedCandidate);
 
       alert('Vote cast successfully with 0.01 ETH!');
       setVotingEvent(null);
       setSelectedCandidate(null);
     } catch (error) {
+      console.error('Vote error details:', error);
+      console.error('Error message:', error.message);
+      if (error.data) console.error('Error data:', error.data);
       alert(error.message || 'Failed to vote');
     } finally {
       setVoting(false);
